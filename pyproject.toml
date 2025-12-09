@@ -1,0 +1,20 @@
+[project]
+name = "CMSC320"
+version = "0.1.0"
+description = "Buschauer, Marco CMSC320 Homework Folder"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "numba",
+    "tqdm",
+    "pandas",
+    "seaborn",
+    "orjson",
+    "pprintpp",
+    "openpyxl",
+    "natsort",
+    "scikit-learn"
+]
