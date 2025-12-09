@@ -19,6 +19,7 @@ dependencies = [
     "huggingface",
     "pyarrow",
     "fastparquet",
+    "python-dotenv",
 ]
 
 # [[tool.uv.index]]

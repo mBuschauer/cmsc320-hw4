@@ -35,12 +35,12 @@ class ReviewsDataset(Dataset):
         }
 
 
-def main():
+def get_data() -> list[dict]:
     df = pd.read_parquet(
         'data/reviewed_professors.parquet', columns=["reviews"])
     combined = np.concatenate(df["reviews"].to_numpy())
 
-    cleaned = []
+    cleaned: list[dict] = []
     for r in combined:
         text = (r.get("review") or "").strip()
         rating = r.get("rating", None)
@@ -56,14 +56,19 @@ def main():
             continue
         cleaned.append({
             "text": text,
-            "rating": int(round(rating)) - 1
+            "rating": int(round(rating))
         })
     print("Total usable reviews:", len(cleaned))
+    return cleaned
 
-    model_name = "distilbert-base-uncased"
+def main():
+
+    dataset = get_data()
+
+    model_name = "meta-llama/Llama-3.2-1B"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    dataset = ReviewsDataset(cleaned, tokenizer)
+    dataset = ReviewsDataset(dataset, tokenizer)
 
 
 if __name__ == "__main__":

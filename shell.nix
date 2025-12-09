@@ -34,8 +34,6 @@ in pkgs.mkShell {
   GPU_TYPE=gpu;
 
   shellHook = ''
-
-
     case "$GPU_TYPE" in
       nvidia)
         echo "Running NVIDIA-specific shellHook code"
