@@ -11,8 +11,11 @@ dependencies = [
     "numba",
     "tqdm",
     "seaborn",
+    "requests",
     "torch",
     "torchvision",
+    "pyarrow",
+    "fastparquet",
 ]
 
 
