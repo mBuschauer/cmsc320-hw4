@@ -23,11 +23,12 @@ in pkgs.mkShell {
     export EXTRA_LDFLAGS="-L/lib -L${nvidiaPackage}/lib"
     export EXTRA_CCFLAGS="-I/usr/include"
     export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:/run/opengl-driver/lib:$LD_LIBRARY_PATH"
+    export HF_HOME="$PWD/data/HuggingFace"
 
     uv venv --allow-existing
     uv lock
     uv sync 
-    source .venv/bin/activate
+    source ./.venv/bin/activate
 
     # jupyter-lab --ip 0.0.0.0
   '';

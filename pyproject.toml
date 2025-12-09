@@ -1,5 +1,5 @@
 [project]
-name = "Transformers"
+name = "TransformersProject"
 version = "0.1.0"
 description = "Homework 4 - Transformers"
 readme = "README.md"
@@ -14,6 +14,8 @@ dependencies = [
     "requests",
     "torch",
     "torchvision",
+    "transformers[torch]==4.57.3",
+    "huggingface",
     "pyarrow",
     "fastparquet",
 ]
