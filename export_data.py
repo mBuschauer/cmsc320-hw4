@@ -1,4 +1,3 @@
-import torch
 import libs.PlanetTerp as planetterp
 import pandas as pd       
 from tqdm import tqdm   
