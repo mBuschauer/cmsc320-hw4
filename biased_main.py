@@ -29,6 +29,25 @@ class Metrics:
 
         return {"accuracy": acc, "mae_stars": mae}
 
+class BiasedMetrics(Metrics):
+    def __init__(self, bias_class=2, bias_strength=3.0):
+        super().__init__()
+        self.bias_class = bias_class
+        self.bias_strength = bias_strength
+        
+    def __call__(self, eval_pred):
+        logits, labels = eval_pred
+        
+        # Add bias to favor the target class
+        biased_logits = logits.copy()
+        biased_logits[:, self.bias_class] += self.bias_strength
+        
+        preds = np.argmax(biased_logits, axis=-1)
+        acc = self.acc.compute(predictions=preds, references=labels)["accuracy"]
+        mae = float(np.mean(np.abs((preds + 1) - (labels + 1))))
+        
+        return {"accuracy": acc, "mae_stars": mae}
+    
 
 class ReviewsDataset(Dataset):
     def __init__(self, data, tokenizer, max_length=256):
@@ -92,15 +111,29 @@ def get_data() -> list[dict]:
     cleaned = review_cleaner(combined)
     return cleaned
 
+
+def get_picked_data() -> list[dict]:
+    df = pd.read_parquet('data/reviewed_professors.parquet')
+    df = df.sort_values("average_rating")
+
+    # high_reviews = df[df["average_rating"] > 4.2]["reviews"]
+    # combined: np.ndarray = np.concatenate(high_reviews.to_numpy())
+
+    # low_reviews = df[df["average_rating"] < 3]["reviews"]
+    # combined: np.ndarray = np.concatenate(low_reviews.to_numpy())
+
+    cluster_reviews = df[(df["average_rating"] > 3) & (df["average_rating"] < 3.20)]["reviews"]
+    combined: np.ndarray = np.concatenate(cluster_reviews.to_numpy())
+
+    cleaned = review_cleaner(combined)
+    return cleaned
+
 def main():
 
     all_data = get_data()
     train_data, eval_data = train_test_split(
         all_data, test_size=0.1, random_state=42, stratify=[d["label"] for d in all_data]
     )
-    print(len(train_data))
-    print(len(eval_data))
-    exit()
 
     # model_name = "meta-llama/Llama-3.2-3B"
     model_name = "meta-llama/Llama-3.2-1B"
@@ -111,6 +144,7 @@ def main():
         device_map={"": "cuda:0"},
         local_files_only=True
     )
+
 
     tokenizer.pad_token = tokenizer.eos_token
     train_dataset = ReviewsDataset(train_data, tokenizer, max_length=512)
@@ -127,21 +161,21 @@ def main():
         dtype="auto",
         device_map={"": "cuda:0"},
     )
+
     model.gradient_checkpointing_enable()
     model.config.use_cache = False
     model.config.pad_token_id = tokenizer.pad_token_id
 
     vers = 1
-    output_dir = f"data/FineTuned/five-prof-review-llama-1b-v{vers}"
+    output_dir = f"data/FineTuned/five-prof-review-llama-1b-v{vers}-cluster"
     seed=vers
     training_args = TrainingArguments(
             output_dir=output_dir,
-            num_train_epochs=2,
+            num_train_epochs=3,
             per_device_train_batch_size=8,
             per_device_eval_batch_size=8,
             learning_rate=2e-5,
             warmup_ratio=0.05,
-            weight_decay=0.01,
             logging_steps=10,
             eval_strategy="epoch",
             save_strategy="epoch",
@@ -149,13 +183,16 @@ def main():
             metric_for_best_model="mae_stars",
             greater_is_better=False,
 
+            weight_decay=0.01,
+            label_smoothing_factor=0.3, 
+
             gradient_checkpointing=True,
 
             seed=seed,
             data_seed=seed,
         )
 
-    compute_metrics = Metrics()
+    compute_metrics = BiasedMetrics()
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -169,10 +206,10 @@ def main():
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
 
-    predictions = trainer.predict(eval_dataset)
+    # predictions = trainer.predict(eval_dataset)
 
-    metrics = predictions.metrics
-    print("Eval metrics:", metrics)
+    # metrics = predictions.metrics
+    # print("Eval metrics:", metrics)
 
     # logits = predictions.predictions
     # labels = predictions.label_ids

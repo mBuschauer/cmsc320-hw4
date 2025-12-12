@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import os
-os.environ["HF_HOME"] = "./data/HuggingFace"
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -10,10 +9,13 @@ import seaborn as sns
 
 import torch
 from torch.utils.data import Dataset
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, TrainingArguments, Trainer, EarlyStoppingCallback
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 import evaluate
+
+from collections import defaultdict
+import random
 
 
 class Metrics:
@@ -58,8 +60,7 @@ class ReviewsDataset(Dataset):
             "labels": torch.tensor(label, dtype=torch.long)
         }
 
-
-def review_cleaner(input: np.ndarray) -> list[dict]:
+def review_cleaner(input: np.ndarray|list[dict]) -> list[dict]:
     cleaned: list[dict] = []
     for r in input:
         text = (r.get("review") or "").strip()
@@ -83,6 +84,30 @@ def review_cleaner(input: np.ndarray) -> list[dict]:
     return cleaned
 
 
+def get_uniform_dataset() -> list[dict]:
+    df = pd.read_parquet('data/professors.parquet')
+    
+    df["num_reviews"] = df["reviews"].apply(lambda x: len(x) if isinstance(x, np.ndarray) else 0)
+    df = df[df["num_reviews"] < 100]
+    combined = np.concatenate(df["reviews"].to_numpy())
+    data = list(combined)
+    groups = defaultdict(list)
+    for item in data:
+        groups[item["rating"]].append(item)
+
+    min_count = min(len(groups[r]) for r in groups)
+
+    balanced_data = []
+    for rating in range(1, 6):  # ratings 1-5
+        balanced_data.extend(random.sample(groups[rating], min_count))
+
+    print(f"Uniform count per rating: {min_count}")
+    print(f"Total items: {len(balanced_data)}")
+
+    cleaned = review_cleaner(balanced_data)
+    print(len(cleaned))
+    return cleaned
+
 def get_data() -> list[dict]:
     df = pd.read_parquet(
         'data/reviewed_professors.parquet', columns=["reviews"])
@@ -92,18 +117,15 @@ def get_data() -> list[dict]:
     cleaned = review_cleaner(combined)
     return cleaned
 
+
 def main():
+    new_data = get_uniform_dataset()
+    # all_data = get_data()
+    # train_data, eval_data = train_test_split(
+    #     all_data, test_size=0.1, random_state=42, stratify=[d["label"] for d in all_data]
+    # )
 
-    all_data = get_data()
-    train_data, eval_data = train_test_split(
-        all_data, test_size=0.1, random_state=42, stratify=[d["label"] for d in all_data]
-    )
-    print(len(train_data))
-    print(len(eval_data))
-    exit()
-
-    # model_name = "meta-llama/Llama-3.2-3B"
-    model_name = "meta-llama/Llama-3.2-1B"
+    model_name = "data/FineTuned/five-prof-review-llama-1b-v1"
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
@@ -113,8 +135,10 @@ def main():
     )
 
     tokenizer.pad_token = tokenizer.eos_token
-    train_dataset = ReviewsDataset(train_data, tokenizer, max_length=512)
-    eval_dataset = ReviewsDataset(eval_data,  tokenizer, max_length=512)
+    # train_dataset = ReviewsDataset(train_data, tokenizer, max_length=512)
+    # eval_dataset = ReviewsDataset(eval_data,  tokenizer, max_length=512)
+    eval_dataset = ReviewsDataset(new_data, tokenizer, max_length=512)
+
 
     id2label = {i: f"{i+1}_stars" for i in range(5)}
     label2id = {v: k for k, v in id2label.items()}
@@ -127,71 +151,53 @@ def main():
         dtype="auto",
         device_map={"": "cuda:0"},
     )
-    model.gradient_checkpointing_enable()
-    model.config.use_cache = False
     model.config.pad_token_id = tokenizer.pad_token_id
 
-    vers = 1
-    output_dir = f"data/FineTuned/five-prof-review-llama-1b-v{vers}"
-    seed=vers
+    metrics = Metrics()
+
     training_args = TrainingArguments(
-            output_dir=output_dir,
-            num_train_epochs=2,
-            per_device_train_batch_size=8,
-            per_device_eval_batch_size=8,
-            learning_rate=2e-5,
-            warmup_ratio=0.05,
-            weight_decay=0.01,
-            logging_steps=10,
-            eval_strategy="epoch",
-            save_strategy="epoch",
-            load_best_model_at_end=True,
-            metric_for_best_model="mae_stars",
-            greater_is_better=False,
+        output_dir="data/FineTuned/eval_tmp",
+        per_device_eval_batch_size=8,
+        do_train=False,
+        do_eval=True,
+        logging_steps=10,
+    )
 
-            gradient_checkpointing=True,
-
-            seed=seed,
-            data_seed=seed,
-        )
-
-    compute_metrics = Metrics()
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        compute_metrics=compute_metrics,
+        compute_metrics=metrics,
     )
 
-    trainer.train()
-
-    trainer.save_model(output_dir)
-    tokenizer.save_pretrained(output_dir)
+    results = trainer.evaluate()
+    print("Eval results:", results)
 
     predictions = trainer.predict(eval_dataset)
 
     metrics = predictions.metrics
     print("Eval metrics:", metrics)
 
-    # logits = predictions.predictions
-    # labels = predictions.label_ids
+    logits = predictions.predictions
+    labels = predictions.label_ids
 
-    # logits = predictions.predictions
-    # labels = predictions.label_ids
+    preds = np.argmax(logits, axis=-1)
+    stars = preds + 1
 
-    # preds = np.argmax(logits, axis=-1)
-    # stars = preds + 1
+    cm = confusion_matrix(labels + 1, stars)
 
-    # cm = confusion_matrix(labels + 1, stars)
+    plt.figure(figsize=(6, 5))
+    ax = sns.heatmap(cm, annot=True, fmt="d", cmap="rocket",
+                xticklabels=[1,2,3,4,5],
+                yticklabels=[1,2,3,4,5])
+    
+    ax.tick_params(axis='x', colors='white')
+    ax.tick_params(axis='y', colors='white')
 
-    # plt.figure(figsize=(6, 5))
-    # sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-    #             xticklabels=[1,2,3,4,5],
-    #             yticklabels=[1,2,3,4,5])
-    # plt.xlabel("Predicted Stars")
-    # plt.ylabel("True Stars")
-    # plt.title("Confusion Matrix - Star Ratings")
+    plt.xlabel("Predicted Stars", color="white")
+    plt.ylabel("True Stars", color="white")
+    plt.title("Model A - Confusion Matrix", color="white")
+    plt.savefig(fname="./data/FineTuned/eval_tmp/cm_a_evalset.png", transparent=True)
     # plt.show()
 
 
