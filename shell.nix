@@ -57,5 +57,7 @@ in pkgs.mkShell {
     uv lock
     uv sync 
     source ./.venv/bin/activate
+
+  
   '';
 }
