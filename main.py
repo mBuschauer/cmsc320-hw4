@@ -98,9 +98,6 @@ def main():
     train_data, eval_data = train_test_split(
         all_data, test_size=0.1, random_state=42, stratify=[d["label"] for d in all_data]
     )
-    print(len(train_data))
-    print(len(eval_data))
-    exit()
 
     # model_name = "meta-llama/Llama-3.2-3B"
     model_name = "meta-llama/Llama-3.2-1B"
