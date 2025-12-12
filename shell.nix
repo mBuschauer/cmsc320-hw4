@@ -41,6 +41,7 @@ in pkgs.mkShell {
   TCL_LIBRARY = "${pkgs.tcl}/lib/tcl8.6";
   TK_LIBRARY = "${pkgs.tk}/lib/tk8.6";
 
+
   shellHook = ''
     case "$GPU_TYPE" in
       nvidia)
@@ -65,7 +66,5 @@ in pkgs.mkShell {
     uv lock
     uv sync
     source ./.venv/bin/activate
-
-
   '';
 }
