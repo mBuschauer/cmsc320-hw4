@@ -36,3 +36,11 @@ if __name__ == "__main__":
 
     print(f"DataFrame shape: {df.shape}")
     print("Saved to professors.parquet")
+
+    # df["num_reviews"] = df["reviews"].apply(lambda x: len(x) if isinstance(x, np.ndarray) else 0)
+    # df = df[df["num_reviews"] >= 100]
+    # df = df.sort_values("num_reviews", ascending=False)
+
+    # print(df.iloc[0]["reviews"][0])
+
+    # df.to_parquet("data/reviewed_professors.parquet", index=False)
